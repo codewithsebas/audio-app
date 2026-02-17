@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       audio: {
         input: {
           transcription: {
-            model: "gpt-4o-transcribe",
+            model: "whisper-1cribe",
             language: "es",
             // prompt: "Nombres propios / jerga del dominio, si aplica"
           },

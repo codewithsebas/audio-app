@@ -15,9 +15,26 @@ import { toast } from "sonner";
 
 type Phase = "idle" | "uploading" | "transcribing" | "done";
 
+type Chunk = {
+  index: number; // 0..n
+  start: number; // seconds
+  end: number; // seconds
+  text: string;
+};
+
+type ApiOk = {
+  fullText: string;
+  chunks: Chunk[];
+};
+
+type ApiErr = {
+  error?: string;
+};
+
 type State = {
   file: File | null;
   text: string;
+  chunks: Chunk[];
   error: string | null;
   phase: Phase;
   progress: number; // 0..100
@@ -26,6 +43,7 @@ type State = {
 const initialState: State = {
   file: null,
   text: "",
+  chunks: [],
   error: null,
   phase: "idle",
   progress: 0,
@@ -43,9 +61,20 @@ function formatBytes(bytes: number) {
   return `${n.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function fmtTime(sec: number) {
+  const s = Math.max(0, Math.floor(Number(sec) || 0));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const ss = s % 60;
+  return h > 0
+    ? `${h}:${String(m).padStart(2, "0")}:${String(ss).padStart(2, "0")}`
+    : `${m}:${String(ss).padStart(2, "0")}`;
+}
+
 function playDoneSound() {
   try {
-    const AudioCtx = (window.AudioContext || (window as any).webkitAudioContext) as typeof AudioContext;
+    const AudioCtx = (window.AudioContext ||
+      (window as any).webkitAudioContext) as typeof AudioContext;
     const ctx = new AudioCtx();
 
     const osc = ctx.createOscillator();
@@ -97,21 +126,37 @@ function phaseMeta(phase: Phase, progress: number) {
   }
 }
 
+function isChunkArray(x: unknown): x is Chunk[] {
+  if (!Array.isArray(x)) return false;
+  return x.every((c) => {
+    if (!c || typeof c !== "object") return false;
+    const o = c as any;
+    return (
+      typeof o.index === "number" &&
+      typeof o.start === "number" &&
+      typeof o.end === "number" &&
+      typeof o.text === "string"
+    );
+  });
+}
+
 export default function FileAudioPage() {
   const [state, setState] = React.useState<State>(initialState);
 
-  // Guard contra doble click (más fuerte que depender solo de state.phase)
+  // Guard contra doble click real
   const runningRef = React.useRef(false);
 
   const disabledBusy = state.phase === "uploading" || state.phase === "transcribing";
   const canRun = !!state.file && !disabledBusy && (state.phase === "idle" || state.phase === "done");
 
-  const charCount = state.text.length;
   const meta = phaseMeta(state.phase, state.progress);
+
+  const charCount = state.text.length;
 
   const setFile = (file: File | null) => setState((s) => ({ ...s, file }));
   const setError = (error: string | null) => setState((s) => ({ ...s, error }));
   const setText = (text: string) => setState((s) => ({ ...s, text }));
+  const setChunks = (chunks: Chunk[]) => setState((s) => ({ ...s, chunks }));
   const setPhase = (phase: Phase) => setState((s) => ({ ...s, phase }));
   const setProgress = (progress: number) => setState((s) => ({ ...s, progress }));
 
@@ -122,11 +167,13 @@ export default function FileAudioPage() {
   }
 
   async function run() {
-    if (runningRef.current) return; // evita doble submit real
+    if (runningRef.current) return;
     runningRef.current = true;
 
+    // Limpia salida previa
     setError(null);
     setText("");
+    setChunks([]);
     setProgress(0);
 
     if (!state.file) {
@@ -154,23 +201,27 @@ export default function FileAudioPage() {
         body: JSON.stringify({ bucket, path }),
       });
 
-      const data = await safeReadJson(res);
+      const data = (await safeReadJson(res)) as Partial<ApiOk & ApiErr>;
+
       if (!res.ok) throw new Error(data?.error || `Falló (${res.status}).`);
 
-      const text = String(data?.text ?? "").trim();
-      setText(text);
+      // ✅ Espera: { fullText, chunks }
+      const fullText = String((data as any)?.fullText ?? "").trim();
+      const chunks = isChunkArray((data as any)?.chunks) ? ((data as any).chunks as Chunk[]) : [];
+
+      // Fallback por si backend viejo
+      const fallbackText = String((data as any)?.text ?? "").trim(); // tu backend actual
+      const finalText = fullText || fallbackText;
+
+      setText(finalText);
+      setChunks(chunks);
       setPhase("done");
 
       playDoneSound();
-      setTimeout(() => {
-        playDoneSound();
-      }, 1000);
-      setTimeout(() => {
-        playDoneSound();
-      }, 500);
-      setTimeout(() => {
-        playDoneSound();
-      }, 1500);
+      setTimeout(playDoneSound, 500);
+      setTimeout(playDoneSound, 1000);
+      setTimeout(playDoneSound, 1500);
+
       toast("Completado");
     } catch (e: any) {
       const msg = e?.message ?? "Error.";
@@ -183,9 +234,21 @@ export default function FileAudioPage() {
   }
 
   async function copyToClipboard() {
-    if (!state.text) return;
+    // Si hay chunks, copia en formato por bloques; si no, copia texto plano.
+    const payload =
+      state.chunks.length > 0
+        ? state.chunks
+            .map((c) => {
+              const header = `[${fmtTime(c.start)}–${fmtTime(c.end)}]`;
+              return `${header}\n${(c.text || "").trim()}`;
+            })
+            .join("\n\n")
+        : state.text;
+
+    if (!payload) return;
+
     try {
-      await navigator.clipboard.writeText(state.text);
+      await navigator.clipboard.writeText(payload);
       toast("Copiado");
     } catch {
       toast("No se pudo copiar");
@@ -194,6 +257,7 @@ export default function FileAudioPage() {
 
   function clearText() {
     setText("");
+    setChunks([]);
     toast("Vaciado");
   }
 
@@ -203,16 +267,13 @@ export default function FileAudioPage() {
         <Button asChild variant="outline">
           <Link href="/">← Realtime</Link>
         </Button>
-
         <Badge variant={meta.badgeVariant}>{meta.badge}</Badge>
       </div>
 
       <Card className="rounded-2xl">
         <CardHeader className="space-y-1 gap-0">
           <CardTitle className="text-xl font-semibold">Transcribir archivo de audio</CardTitle>
-          <div className="text-sm text-muted-foreground">
-            Sube un archivo de audio y transcribelo.
-          </div>
+          <div className="text-sm text-muted-foreground">Sube un archivo de audio y transcríbelo en bloques de 15 min.</div>
         </CardHeader>
 
         <CardContent className="space-y-4">
@@ -273,7 +334,7 @@ export default function FileAudioPage() {
                 </div>
 
                 <div className="text-xs text-muted-foreground">
-                  Para mejor precisión, añade un <code>prompt</code> en el backend con nombres propios.
+                  Nota: para que los bloques de 15 min funcionen, el backend debe devolver <code>chunks</code> (verbose_json).
                 </div>
               </CardContent>
             </Card>
@@ -282,37 +343,44 @@ export default function FileAudioPage() {
             <Card className="rounded-2xl py-0 pb-4 md:col-span-2 gap-0">
               <CardHeader className="py-4">
                 <div className="flex items-center justify-between">
-                  <div className="font-medium">Texto final</div>
+                  <div className="font-medium">Resultado</div>
 
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">{charCount.toLocaleString()} caracteres</Badge>
-                    <Badge variant="outline">{state.text ? "Listo" : "—"}</Badge>
+                    <Badge variant="outline">
+                      {state.chunks.length > 0 ? `${state.chunks.length} bloques` : state.text ? "Listo" : "—"}
+                    </Badge>
                   </div>
                 </div>
               </CardHeader>
 
               <CardContent className="pt-0 space-y-3">
-                <ScrollArea className="h-[420px] rounded-xl border bg-muted/30 p-3 py-2">
-                  {state.text ? (
-                    <pre className="whitespace-pre-wrap leading-7 tracking-[0.2px] text-sm">
-                      {state.text}
-                    </pre>
-                  ) : (
-                    <div className="text-muted-foreground text-sm">
-                      Selecciona un archivo y presiona “Subir y transcribir”.
+                <ScrollArea className="h-[420px] rounded-lg border bg-muted/30 p-3">
+                  {state.chunks.length > 0 ? (
+                    <div className="space-y-3">
+                      {state.chunks.map((c) => (
+                        <div key={c.index} className="rounded-xl border bg-background/40 p-3">
+                          <div className="text-xs text-muted-foreground mb-2">
+                            Bloque {c.index + 1} · {fmtTime(c.start)}–{fmtTime(c.end)}
+                          </div>
+                          <pre className="whitespace-pre-wrap leading-7 tracking-[0.2px] text-sm">
+                            {c.text || "—"}
+                          </pre>
+                        </div>
+                      ))}
                     </div>
+                  ) : state.text ? (
+                    <pre className="whitespace-pre-wrap leading-7 tracking-[0.2px] text-sm">{state.text}</pre>
+                  ) : (
+                    <div className="text-muted-foreground text-sm">Selecciona un archivo y presiona “Subir y transcribir”.</div>
                   )}
                 </ScrollArea>
 
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={copyToClipboard} disabled={!state.text}>
+                  <Button variant="outline" onClick={copyToClipboard} disabled={!state.text && state.chunks.length === 0}>
                     Copiar
                   </Button>
-                  <Button
-                    variant="outline"
-                    onClick={clearText}
-                    disabled={!state.text || disabledBusy}
-                  >
+                  <Button variant="outline" onClick={clearText} disabled={(!state.text && state.chunks.length === 0) || disabledBusy}>
                     Vaciar texto
                   </Button>
                 </div>
