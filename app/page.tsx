@@ -122,17 +122,17 @@ export default function RealtimeTranscribePage() {
 
     try {
       dcRef.current?.close();
-    } catch {}
+    } catch { }
     dcRef.current = null;
 
     try {
       pcRef.current?.close();
-    } catch {}
+    } catch { }
     pcRef.current = null;
 
     try {
       micStreamRef.current?.getTracks().forEach((t) => t.stop());
-    } catch {}
+    } catch { }
     micStreamRef.current = null;
 
     // flush final inmediato al detener
@@ -171,9 +171,10 @@ export default function RealtimeTranscribePage() {
     <main className="mx-auto max-w-4xl p-6 space-y-4">
       <div className="flex items-center justify-between">
         <Button asChild variant="outline">
-          <Link href="/">← Volver</Link>
+          <Link href="/file-audio">
+            Transcribir archivo
+          </Link>
         </Button>
-
         <Badge variant={badgeVariant}>
           {state === "idle" && "Listo"}
           {state === "connecting" && "Conectando…"}
