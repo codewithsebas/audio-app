@@ -12,7 +12,6 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 type ConnState = "idle" | "connecting" | "live" | "stopped";
 
 function joinSegments(segments: string[]) {
-  // Une segmentos con separación razonable; evita doble espacio y líneas vacías
   return segments
     .map((s) => s.trim())
     .filter(Boolean)
@@ -26,7 +25,6 @@ export default function RealtimeTranscribePage() {
   const [paused, setPaused] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Guardamos segmentos finales (por turnos)
   const segmentsRef = React.useRef<string[]>([]);
   const [finalText, setFinalText] = React.useState("");
 
@@ -34,7 +32,6 @@ export default function RealtimeTranscribePage() {
   const dcRef = React.useRef<RTCDataChannel | null>(null);
   const micStreamRef = React.useRef<MediaStream | null>(null);
 
-  // Evita setState por cada evento si llegan varios seguidos
   const flushTimerRef = React.useRef<number | null>(null);
 
   function scheduleFinalFlush() {
@@ -42,7 +39,7 @@ export default function RealtimeTranscribePage() {
     flushTimerRef.current = window.setTimeout(() => {
       flushTimerRef.current = null;
       setFinalText(joinSegments(segmentsRef.current));
-    }, 60); // pequeño debounce para agrupar renders
+    }, 60);
   }
 
   function resetAll() {
@@ -81,7 +78,6 @@ export default function RealtimeTranscribePage() {
           const msg = JSON.parse(ev.data);
           const t = msg?.type;
 
-          // SOLO final; ignoramos deltas para evitar ruido/render extra
           if (t === "conversation.item.input_audio_transcription.completed") {
             const transcript = msg?.transcript ?? "";
             if (typeof transcript === "string" && transcript.trim()) {
@@ -122,20 +118,19 @@ export default function RealtimeTranscribePage() {
 
     try {
       dcRef.current?.close();
-    } catch { }
+    } catch {}
     dcRef.current = null;
 
     try {
       pcRef.current?.close();
-    } catch { }
+    } catch {}
     pcRef.current = null;
 
     try {
       micStreamRef.current?.getTracks().forEach((t) => t.stop());
-    } catch { }
+    } catch {}
     micStreamRef.current = null;
 
-    // flush final inmediato al detener
     setFinalText(joinSegments(segmentsRef.current));
   }
 
@@ -144,10 +139,9 @@ export default function RealtimeTranscribePage() {
     if (!track) return;
 
     const nextPaused = !paused;
-    track.enabled = !nextPaused; // pausa real (mute)
+    track.enabled = !nextPaused;
     setPaused(nextPaused);
 
-    // si pausas, hacemos flush para que quede consistente
     if (nextPaused) setFinalText(joinSegments(segmentsRef.current));
   }
 
@@ -171,10 +165,9 @@ export default function RealtimeTranscribePage() {
     <main className="mx-auto max-w-4xl p-6 space-y-4">
       <div className="flex items-center justify-between">
         <Button asChild variant="outline">
-          <Link href="/file-audio">
-            Transcribir archivo
-          </Link>
+          <Link href="/file-audio">Transcribir archivo</Link>
         </Button>
+
         <Badge variant={badgeVariant}>
           {state === "idle" && "Listo"}
           {state === "connecting" && "Conectando…"}
@@ -193,12 +186,7 @@ export default function RealtimeTranscribePage() {
                 {canStop ? "Detener" : state === "connecting" ? "Iniciando…" : "Iniciar"}
               </Button>
 
-              <Button
-                size="lg"
-                variant="secondary"
-                onClick={togglePause}
-                disabled={!canPause}
-              >
+              <Button size="lg" variant="secondary" onClick={togglePause} disabled={!canPause}>
                 {paused ? "Reanudar" : "Pausar"}
               </Button>
 
@@ -216,7 +204,7 @@ export default function RealtimeTranscribePage() {
             </div>
 
             <div className="text-sm text-muted-foreground">
-              Se guarda solo lo <b>finalizado</b> por turnos (sin texto “en vivo”).
+              Se guarda solo lo <b>finalizado</b> por turnos.
             </div>
           </div>
         </CardHeader>
@@ -232,14 +220,10 @@ export default function RealtimeTranscribePage() {
           <Separator />
 
           <ScrollArea className="h-[420px] rounded-md border p-3">
-            <pre className="whitespace-pre-wrap text-sm leading-3.5">
+            <pre className="whitespace-pre-wrap text-sm leading-6">
               {finalText || "—"}
             </pre>
           </ScrollArea>
-
-          <div className="text-xs text-muted-foreground">
-            Pausa = no se captura audio. Si necesitas más precisión.
-          </div>
         </CardContent>
       </Card>
     </main>

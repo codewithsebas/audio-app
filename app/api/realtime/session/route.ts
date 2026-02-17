@@ -14,14 +14,12 @@ export async function POST(req: Request) {
       audio: {
         input: {
           transcription: {
-            // Más precisión (mejor “entendimiento” de palabras)
             model: "gpt-4o-transcribe",
             language: "es",
             // prompt: "Nombres propios / jerga del dominio, si aplica"
           },
           turn_detection: {
             type: "server_vad",
-            // Ajustado para “cerrar turnos” más rápido sin cortar demasiado
             threshold: 0.45,
             prefix_padding_ms: 150,
             silence_duration_ms: 220,
@@ -50,8 +48,13 @@ export async function POST(req: Request) {
     }
 
     const sdpAnswer = await r.text();
-    return new Response(sdpAnswer, { headers: { "Content-Type": "application/sdp" } });
+    return new Response(sdpAnswer, {
+      headers: { "Content-Type": "application/sdp" },
+    });
   } catch (e: any) {
-    return Response.json({ error: e?.message ?? "Error creando sesión." }, { status: 500 });
+    return Response.json(
+      { error: e?.message ?? "Error creando sesión." },
+      { status: 500 }
+    );
   }
 }
