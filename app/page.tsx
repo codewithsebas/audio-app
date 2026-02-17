@@ -208,10 +208,10 @@ export default function FileAudioPage() {
       </div>
 
       <Card className="rounded-2xl">
-        <CardHeader className="space-y-1">
-          <CardTitle>Transcribir archivo largo (Supabase)</CardTitle>
+        <CardHeader className="space-y-1 gap-0">
+          <CardTitle className="text-xl font-semibold">Transcribir archivo de audio</CardTitle>
           <div className="text-sm text-muted-foreground">
-            Subida resumable (TUS) + transcripción desde Storage. Evita el error 413.
+            Sube un archivo de audio y transcribelo.
           </div>
         </CardHeader>
 
@@ -223,9 +223,9 @@ export default function FileAudioPage() {
             </Alert>
           )}
 
-          <div className="grid gap-4 grid-cols-1 md:grid-cols-3">
+          <div className="flex flex-col gap-4">
             {/* Panel archivo */}
-            <Card className="rounded-2xl md:col-span-1 py-0 pb-4">
+            <Card className="rounded-2xl md:col-span-1 py-0 pb-4 gap-0">
               <CardHeader className="py-4">
                 <div className="flex items-center justify-between">
                   <div className="font-medium">Archivo</div>
@@ -279,7 +279,7 @@ export default function FileAudioPage() {
             </Card>
 
             {/* Panel texto */}
-            <Card className="rounded-2xl py-0 pb-4 md:col-span-2">
+            <Card className="rounded-2xl py-0 pb-4 md:col-span-2 gap-0">
               <CardHeader className="py-4">
                 <div className="flex items-center justify-between">
                   <div className="font-medium">Texto final</div>
@@ -292,7 +292,7 @@ export default function FileAudioPage() {
               </CardHeader>
 
               <CardContent className="pt-0 space-y-3">
-                <ScrollArea className="h-[420px] rounded-xl border bg-muted/30 p-6">
+                <ScrollArea className="h-[420px] rounded-xl border bg-muted/30 p-3 py-2">
                   {state.text ? (
                     <pre className="whitespace-pre-wrap leading-7 tracking-[0.2px] text-sm">
                       {state.text}
@@ -315,11 +315,6 @@ export default function FileAudioPage() {
                   >
                     Vaciar texto
                   </Button>
-                </div>
-
-                <div className="text-xs text-muted-foreground">
-                  Si el texto sale “pegado”, mejora el audio (menos eco/ruido). Para jerga/nombres propios, usa{" "}
-                  <code>prompt</code>.
                 </div>
               </CardContent>
             </Card>
